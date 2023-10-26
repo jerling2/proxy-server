@@ -16,9 +16,10 @@ import logging  # More flexibile print statements.
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 6060
+PROXY_PORT = 6061
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
+SOCKET_FILE_BUFFER_SIZE = 1024
 
 # ---------------------------------------------------------------------------- #
 # ------------------------------- Logger Config ------------------------------ #
@@ -78,32 +79,73 @@ if OUTPUT_FILE:
 # ---------------------------------------------------------------------------- #
 # ---------------------------------- Classes --------------------------------- #
 
+class TCPSocket:
+    # Singleton Pattern
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super().__new__(cls)
+            cls.socket = socket(AF_INET, SOCK_STREAM)
+            if 'name' in kwargs:
+                cls.name = kwargs['name']
+            else:
+                cls.name = 'host'
+        return cls.instance
+    
+    def open(cls):
+        cls.socket.bind((PROXY_IP, PROXY_PORT))
+        cls.socket.listen(PROXY_CONNECTION_QUEUE_SIZE)
+        logger.info(f"{cls.name} listening on {PROXY_IP}:{PROXY_PORT}")
+        return cls.socket
+
+    def connect(cls, ip, port):
+        cls.socket.connect((ip, port))
+
+    def make_socket_file(cls):
+        cls.socket_file = cls.socket.makefile('rwb')
+
+    def write(cls, msg):
+        cls.socket_file.write(msg.encode('utf-8'))
+        cls.socket_file.flush()
+
+    def __accept(cls):
+        return cls.socket.accept()
+
+    def on_connect(cls):
+        cls.client_socket, cls.client_address = cls.__accept()
+        logger.info(f"Connection established from address {cls.client_address}")
+        return True
+
+    def on_socket_file(cls):
+        cls.cli_socket_file = cls.client_socket.makefile('rb', 0)
+        return True
+
+    def get_socket_file_data(cls):
+        return cls.cli_socket_file.read(SOCKET_FILE_BUFFER_SIZE)
+        
+    def close_client(cls):
+        cls.cli_socket_file.close()
+        cls.client_socket.close()
+
+    def close(cls):
+        logger.info(f"{cls.name} closed.")
+        cls.socket.close()
+
+    def emit(cls, msg: str):
+        cls.client_socket.send(msg.encode('utf-8'))
 
 # ---------------------------------------------------------------------------- #
 # -------------------------------- Main Driver ------------------------------- #
 
-# Create a TCP socket, bind it to a port and start listening
-tcpSerSock = socket(AF_INET, SOCK_STREAM)
-tcpSerSock.bind((PROXY_IP, PROXY_PORT))
-tcpSerSock.listen(PROXY_CONNECTION_QUEUE_SIZE)
-logger.info(f"Proxy listening on {PROXY_IP}:{PROXY_PORT}")
+proxy = TCPSocket(name='Proxy')
+proxy.open()
 
 while True:
-    client_socket, client_address = tcpSerSock.accept()
-    logger.info(f"Connection established from address {client_address}")
-    client_socket.send(bytes("Welcome to the server!", "utf-8"))
+    if proxy.on_connect():
+        proxy.emit("Ready to serve...")
 
-    # Read "bytes" from socket file
-    socket_file = client_socket.makefile('rb', 0)
+    if proxy.on_socket_file():
+        print(proxy.get_socket_file_data())
 
-    # Read and print data from the client
-    data = socket_file.read(1024)
-    logger.info(data)
-    
-    # CLose client connection
-    socket_file.close()
-    client_socket.close()
+    proxy.close_client()
 
-# Close proxy sever
-tcpSerSock.close()
-print("proccess halted")
+proxy.close()
