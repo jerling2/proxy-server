@@ -146,7 +146,14 @@ class TCPSocket:
 
 client = TCPSocket(name='Client')
 client.connect(PROXY_IP, PROXY_PORT)
+
+wait_for_response = client.on_message()
+if wait_for_response != 'Ready to serve...':
+    raise ValueError('not expecting that as input')
+print(f'Server: {wait_for_response}')
 client.emit('Hello, proxy.')
+
+
 
 # client.make_socket_file()
 # msg = "Hello, server!"

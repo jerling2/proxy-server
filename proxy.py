@@ -148,14 +148,10 @@ proxy = TCPSocket(name='Proxy')
 proxy.open()
 
 while True:
-    # if proxy.on_connect():
-        # proxy.emit("Ready to serve...")
-    proxy.on_connect()
-    print(proxy.on_message())
-
-    # if proxy.on_socket_file():
-        # print(proxy.get_socket_file_data())
-
+    if proxy.on_connect():
+        proxy.emit("Ready to serve...")
+        wait_for_response = proxy.on_message()
+        print(f'Client: {wait_for_response}')
     proxy.close_client()
 
 proxy.close()
