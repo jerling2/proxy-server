@@ -16,7 +16,7 @@ import logging  # More flexibile print statements.
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 6061
+PROXY_PORT = 8000
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
 SOCKET_FILE_BUFFER_SIZE = 1024
@@ -121,7 +121,7 @@ class TCPSocket:
         msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
         return msg.decode('utf-8')
 
-    def on_socket_file(cls):
+    def wait_for_socket_file(cls):
         cls.cli_socket_file = cls.client_socket.makefile('rb', 0)
         return True
 
@@ -144,14 +144,22 @@ class TCPSocket:
 # ---------------------------------------------------------------------------- #
 # -------------------------------- Main Driver ------------------------------- #
 
+if len(sys.argv) <= 1:
+    print('Usage : "python ProxyServer.py server_ip"\n[server_ip : It is the IP Address Of Proxy Server')
+    sys.exit(2)
+
+PROXY_IP = sys.argv[1]
+
 proxy = TCPSocket(name='Proxy')
 proxy.open()
 
 while True:
     if proxy.on_connect():
         proxy.emit("Ready to serve...")
-        response = proxy.wait_for_response()
-        print(f'Client: {response}')
+        proxy.wait_for_socket_file()
+        print(proxy.get_socket_file_data())
+        # response = proxy.wait_for_response()
+        # print(f'Client: {response}')
     proxy.close_client()
 
 proxy.close()
