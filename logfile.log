@@ -1,0 +1,3 @@
+INFO: Proxy listening on 127.0.0.1:6060
+INFO: Connection established from address ('127.0.0.1', 53230)
+INFO: b'Hello, server!'
