@@ -13,7 +13,8 @@ while 1:
     print('Ready to serve...')
     tcpCliSock, addr = tcpSerSock.accept()
     print('Received a connection from:', addr)
-    message = # Fill in start.
+    ToDo_1 = 0 # << obviously do this.
+    message = ToDo_1 # Fill in start.
     # Fill in end.
     print(message)
     # Extract the filename from the given message
@@ -39,11 +40,12 @@ while 1:
 
     except IOError:
         if fileExist == "false":
-        # Create a socket on the proxyserver
-        c = # Fill in start.
-        # Fill in end.
-        hostn = filename.replace("www.","",1)
-        print(hostn)
+            # Create a socket on the proxyserver
+            ToDo_2 = 0 # << obviously do this.
+            c = ToDo_2# Fill in start.
+            # Fill in end.
+            hostn = filename.replace("www.","",1)
+            print(hostn)
             try:
                 # Connect to the socket to port 80
                 # Fill in start.
@@ -68,7 +70,8 @@ while 1:
             # HTTP response message for file not found
             # Fill in start.
             # Fill in end.
-
+            pass
+        
     # Close the client and the server sockets
     tcpCliSock.close()
 # Fill in start.
