@@ -92,13 +92,15 @@ class TCPSocket:
         return cls.instance
     
     def open(cls):
+        cls.socket = socket(AF_INET, SOCK_STREAM)
         cls.socket.bind((PROXY_IP, PROXY_PORT))
         cls.socket.listen(PROXY_CONNECTION_QUEUE_SIZE)
         logger.info(f"{cls.name} listening on {PROXY_IP}:{PROXY_PORT}")
         return cls.socket
 
     def connect(cls, ip, port):
-        cls.socket.connect((ip, port))
+        cls.client_socket = socket(AF_INET, SOCK_STREAM)
+        cls.client_socket.connect((ip, port))
 
     def make_socket_file(cls):
         cls.socket_file = cls.socket.makefile('rwb')
@@ -115,6 +117,10 @@ class TCPSocket:
         logger.info(f"Connection established from address {cls.client_address}")
         return True
     
+    def on_message(cls):
+        msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
+        return msg.decode('utf-8')
+
     def on_socket_file(cls):
         cls.cli_socket_file = cls.client_socket.makefile('rb', 0)
         return True
@@ -123,8 +129,10 @@ class TCPSocket:
         return cls.cli_socket_file.read(SOCKET_FILE_BUFFER_SIZE)
         
     def close_client(cls):
-        cls.cli_socket_file.close()
         cls.client_socket.close()
+
+    def close_client_socket_file(cls):
+        cls.client_socket_file.close()
 
     def close(cls):
         logger.info(f"{cls.name} closed.")
@@ -138,7 +146,12 @@ class TCPSocket:
 
 client = TCPSocket(name='Client')
 client.connect(PROXY_IP, PROXY_PORT)
-client.make_socket_file()
-msg = "Hello, server!"
-client.write(msg)
+client.emit('Hello, proxy.')
+
+# client.make_socket_file()
+# msg = "Hello, server!"
+# client.write(msg)
+
+
+
 client.close()
