@@ -117,7 +117,7 @@ class TCPSocket:
         logger.info(f"Connection established from address {cls.client_address}")
         return True
     
-    def on_message(cls):
+    def wait_for_response(cls):
         msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
         return msg.decode('utf-8')
 
@@ -150,8 +150,8 @@ proxy.open()
 while True:
     if proxy.on_connect():
         proxy.emit("Ready to serve...")
-        wait_for_response = proxy.on_message()
-        print(f'Client: {wait_for_response}')
+        response = proxy.wait_for_response()
+        print(f'Client: {response}')
     proxy.close_client()
 
 proxy.close()
