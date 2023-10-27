@@ -112,10 +112,9 @@ class TCPSocket:
     def __accept(cls):
         return cls.socket.accept()
 
-    def on_connect(cls):
+    def wait_for_connection(cls):
         cls.client_socket, cls.client_address = cls.__accept()
         logger.info(f"Connection established from address {cls.client_address}")
-        return True
     
     def wait_for_response(cls):
         msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
@@ -123,16 +122,17 @@ class TCPSocket:
 
     def wait_for_socket_file(cls):
         cls.cli_socket_file = cls.client_socket.makefile('rb', 0)
-        return True
 
     def get_socket_file_data(cls):
-        return cls.cli_socket_file.read(SOCKET_FILE_BUFFER_SIZE)
+        return cls.cli_socket_file
+        # return cls.cli_socket_file.read(SOCKET_FILE_BUFFER_SIZE)
         
     def close_client(cls):
+        cls.cli_socket_file.close()
         cls.client_socket.close()
 
-    def close_client_socket_file(cls):
-        cls.client_socket_file.close()
+    # def close_client_socket_file(cls):
+    #     cls.client_socket_file.close()
 
     def close(cls):
         logger.info(f"{cls.name} closed.")
@@ -154,12 +154,13 @@ proxy = TCPSocket(name='Proxy')
 proxy.open()
 
 while True:
-    if proxy.on_connect():
-        proxy.emit("Ready to serve...")
-        proxy.wait_for_socket_file()
-        print(proxy.get_socket_file_data())
-        # response = proxy.wait_for_response()
-        # print(f'Client: {response}')
+    proxy.wait_for_connection()
+    proxy.emit("Ready to serve...")
+    proxy.wait_for_socket_file()
+    file = proxy.get_socket_file_data()
+    lines = file.readlines(20000)
+    for line in lines:
+        print(line)
     proxy.close_client()
 
 proxy.close()
