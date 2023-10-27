@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8000
+PROXY_PORT = 8001
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
 SOCKET_FILE_BUFFER_SIZE = 1024
@@ -106,9 +106,11 @@ class TCPSocket:
     def __close_target_socket(cls):
         cls.target_socket.close()
 
-    def __make_socket_file(cls):
-        cls.target_socket_file = cls.target_socket.makefile('r', 0)
-        cls.target_socket_file.write("GET  " + "http://" + cls.target_filename + "HTTP/1.0\n\n")
+    def __write_socket_file(cls):
+        cls.target_socket_file = cls.target_socket.makefile('rwb', 0)
+        msg = "GET  " + "http://" + cls.target_filename + "HTTP/1.0\n\n"
+        msg = msg.encode('utf-8')
+        cls.target_socket_file.write(msg)
 
     def __accept(cls):
         return cls.socket.accept()
@@ -121,18 +123,29 @@ class TCPSocket:
         msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
         return msg.decode('utf-8')
 
-    def wait_for_socket_file(cls):
-        cls.client_socket_file = cls.client_socket.makefile('rb', 0)
+    def wait_for_socket_file(cls, client_or_server: str):
+        if client_or_server == 'from client':
+            cls.client_socket_file = cls.client_socket.makefile('rb', 0)
+        if client_or_server == 'from web server':
+            cls.target_socket_file = cls.target_socket.makefile('rb', 0)
     
-    def create_socket_file_data_dict(cls):
+    def create_socket_file_data_dict(cls, client_or_server: str):
+        if client_or_server == 'from client':
+            socket_file = cls.client_socket_file
+        elif client_or_server == 'from web server':
+            socket_file = cls.target_socket_file
+
         data_dict = dict()
-        request_line = cls.client_socket_file.readline(SOCKET_FILE_BUFFER_SIZE).decode('utf-8').split()
+
+        # Extract the Request Line
+        request_line = socket_file.readline(SOCKET_FILE_BUFFER_SIZE).decode('utf-8').split()
         data_dict['method'] = request_line[0]
         data_dict['url'] = request_line[1]
         data_dict['version'] = request_line[2]
 
+        # Extract the Headers
         while True:
-            line = cls.client_socket_file.readline(SOCKET_FILE_BUFFER_SIZE)
+            line = socket_file.readline(SOCKET_FILE_BUFFER_SIZE)
             line = line.decode('utf-8').strip()
             if not line:
                 # Reached end of headers
@@ -140,7 +153,20 @@ class TCPSocket:
             header, value = line.split(':', 1)
             data_dict[header] = value
         
-        cls.client_socket_data_dict = data_dict
+        # Extract the Body
+        body = ""
+        while True:
+            line = socket_file.readline(SOCKET_FILE_BUFFER_SIZE)
+            line = line.decode('utf-8').strip()
+            if not line:
+                break
+            body += line
+
+        if client_or_server == 'from client':
+            cls.client_socket_data_dict = data_dict
+        elif client_or_server == 'from web server':
+            cls.target_socket_data_dict = data_dict
+            cls.target_body = body
     
     def extract_filename(cls):
         target_url = cls.client_socket_data_dict['url']
@@ -200,8 +226,26 @@ class TCPSocket:
                 print(cls.target_scheme)
 
                 cls.__connect_to_target()
-                
-                # try:
+                cls.__write_socket_file()
+                cls.wait_for_socket_file('from web server')
+                cls.create_socket_file_data_dict('from web server')
+                f = open(cls.target_filename, "wb")
+
+                f.write(cls.target_body)
+               
+                # cls.emit(b"HTTP/1.0 200 OK\r\n")
+                # cls.emit(b"Content-Type:text/html\r\n")
+
+                # cls.target_socket_file = cls.target_socket.makefile('rwb', 0)
+                # msg = "GET  " + "http://" + cls.target_filename + "HTTP/1.0\n\n"
+                # msg = msg.encode('utf-8')
+                # cls.target_socket_file.write(msg)
+
+
+                # tempSocketFile = cls.client_socket.makefile('rwb', 0)
+                # response = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello, World!"
+                # tempSocketFile.send(response.encode('utf-8'))
+                # # try:
                     # Connect to the socket to port 80
                     # # Fill in start.
                     # # Fill in end.
@@ -253,11 +297,25 @@ proxy.open()
 
 while True:
     proxy.wait_for_connection()
-    proxy.emit("Ready to serve...")
-    proxy.wait_for_socket_file()
-    proxy.create_socket_file_data_dict()
-    proxy.extract_filename()
-    proxy.check_cache()
-    proxy.close_client()
+    proxy.client_socket.recv(1000)
+    # proxy.emit("Ready to serve...")
+
+    # proxy.wait_for_socket_file('from client')
+
+    # proxy.client_socket.recv(1000)
+    socket_file = proxy.client_socket.makefile('rwb', 0)
+    response = b'HTTP/1.0 200 OK\nContent-Type: text/html\n\n'
+    body = b"""<html><body><h1>Hello World</h1> this is my server!</body></html>"""
+    proxy.client_socket.send(response)
+    proxy.client_socket.send(body)
+    # proxy.create_socket_file_data_dict('from client')
+    # proxy.extract_filename()
+    # proxy.check_cache()
+    # response = """HTTP/1.1 200 OK\r\nContent-Length: text/html\r\n\r\n"""
+    # html_content = proxy.target_body
+    
+
+    # proxy.client_socket.send((response + html_content).encode('utf-8'))
+    # proxy.close_client()
     
 proxy.close()
