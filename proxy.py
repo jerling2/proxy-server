@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8001
+PROXY_PORT = 8000
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
 SOCKET_FILE_BUFFER_SIZE = 1024
@@ -91,13 +91,23 @@ class TCPSocket:
             else:
                 cls.name = 'host'
         return cls.instance
-    
+
     def open(cls):
         cls.socket = socket(AF_INET, SOCK_STREAM)
         cls.socket.bind((PROXY_IP, PROXY_PORT))
         cls.socket.listen(PROXY_CONNECTION_QUEUE_SIZE)
         logger.info(f"{cls.name} listening on {PROXY_IP}:{PROXY_PORT}")
         return cls.socket
+
+    def wait_for_connection(cls):
+        cls.client_socket, cls.client_address = cls.__accept()
+        logger.info(f"Connection established from address {cls.client_address}")
+
+    def wait_for_socket_file(cls, client_or_server: str):
+        if client_or_server == 'from client':
+            cls.client_socket_file = cls.client_socket.makefile('rb', 0)
+        if client_or_server == 'from web server':
+            cls.target_socket_file = cls.target_socket.makefile('rb', 0)
 
     def __connect_to_target(cls):
         cls.target_socket = socket(AF_INET, SOCK_STREAM)
@@ -114,20 +124,6 @@ class TCPSocket:
 
     def __accept(cls):
         return cls.socket.accept()
-
-    def wait_for_connection(cls):
-        cls.client_socket, cls.client_address = cls.__accept()
-        logger.info(f"Connection established from address {cls.client_address}")
-    
-    def wait_for_response(cls):
-        msg = cls.client_socket.recv(SOCKET_FILE_BUFFER_SIZE)
-        return msg.decode('utf-8')
-
-    def wait_for_socket_file(cls, client_or_server: str):
-        if client_or_server == 'from client':
-            cls.client_socket_file = cls.client_socket.makefile('rb', 0)
-        if client_or_server == 'from web server':
-            cls.target_socket_file = cls.target_socket.makefile('rb', 0)
     
     def create_socket_file_data_dict(cls, client_or_server: str):
         if client_or_server == 'from client':
@@ -297,25 +293,9 @@ proxy.open()
 
 while True:
     proxy.wait_for_connection()
-    proxy.client_socket.recv(1000)
-    # proxy.emit("Ready to serve...")
+    proxy.wait_for_socket_file('from client')
+    proxy.client_socket.write(b'HTTP/1.0 200 OK\n')
+    proxy.client_socket.flush()
 
-    # proxy.wait_for_socket_file('from client')
 
-    # proxy.client_socket.recv(1000)
-    socket_file = proxy.client_socket.makefile('rwb', 0)
-    response = b'HTTP/1.0 200 OK\nContent-Type: text/html\n\n'
-    body = b"""<html><body><h1>Hello World</h1> this is my server!</body></html>"""
-    proxy.client_socket.send(response)
-    proxy.client_socket.send(body)
-    # proxy.create_socket_file_data_dict('from client')
-    # proxy.extract_filename()
-    # proxy.check_cache()
-    # response = """HTTP/1.1 200 OK\r\nContent-Length: text/html\r\n\r\n"""
-    # html_content = proxy.target_body
-    
-
-    # proxy.client_socket.send((response + html_content).encode('utf-8'))
-    # proxy.close_client()
-    
 proxy.close()
