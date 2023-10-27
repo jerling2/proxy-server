@@ -10,13 +10,14 @@
 from socket import *  # Access to TCP sockets 
 import sys  # Access for argv and argc.
 import logging  # More flexibile print statements.
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------- #
 # ------------------------------ Global Variable ----------------------------- #
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8001
+PROXY_PORT = 8000
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
 SOCKET_FILE_BUFFER_SIZE = 1024
@@ -98,6 +99,17 @@ class TCPSocket:
         logger.info(f"{cls.name} listening on {PROXY_IP}:{PROXY_PORT}")
         return cls.socket
 
+    def __connect_to_target(cls):
+        cls.target_socket = socket(AF_INET, SOCK_STREAM)
+        cls.target_socket.connect((cls.target_host, 80))
+
+    def __close_target_socket(cls):
+        cls.target_socket.close()
+
+    def __make_socket_file(cls):
+        cls.target_socket_file = cls.target_socket.makefile('r', 0)
+        cls.target_socket_file.write("GET  " + "http://" + cls.target_filename + "HTTP/1.0\n\n")
+
     def __accept(cls):
         return cls.socket.accept()
 
@@ -110,23 +122,114 @@ class TCPSocket:
         return msg.decode('utf-8')
 
     def wait_for_socket_file(cls):
-        cls.cli_socket_file = cls.client_socket.makefile('rb', 0)
-
-    def get_socket_file_data(cls):
-        return cls.cli_socket_file
-        # return cls.cli_socket_file.read(SOCKET_FILE_BUFFER_SIZE)
+        cls.client_socket_file = cls.client_socket.makefile('rb', 0)
     
-    def get_socket_file_data_dict(cls):
+    def create_socket_file_data_dict(cls):
+        data_dict = dict()
+        request_line = cls.client_socket_file.readline(SOCKET_FILE_BUFFER_SIZE).decode('utf-8').split()
+        data_dict['method'] = request_line[0]
+        data_dict['url'] = request_line[1]
+        data_dict['version'] = request_line[2]
 
-        request_line = cls.cli_socket_file.readline(SOCKET_FILE_BUFFER_SIZE)
-        print(request_line)
-        lines = cls.cli_socket_file.readlines(SOCKET_FILE_BUFFER_SIZE)
+        while True:
+            line = cls.client_socket_file.readline(SOCKET_FILE_BUFFER_SIZE)
+            line = line.decode('utf-8').strip()
+            if not line:
+                # Reached end of headers
+                break
+            header, value = line.split(':', 1)
+            data_dict[header] = value
+        
+        cls.client_socket_data_dict = data_dict
+    
+    def extract_filename(cls):
+        target_url = cls.client_socket_data_dict['url']
+        
+        # Remove any forward backslash
+        target_url = target_url.partition("/")[2]
 
-        for line in lines:
-            print(line.decode('utf-8').strip())
+        # seperate url into netloc (domain) and path.
+        url_parse = urlparse(target_url)
+        target_filename = url_parse.netloc
+
+        # Remove subdomain (such as www.)
+        domains = target_filename.split('.')    
+        if len(domains) > 2:
+            target_host = domains[1] + '.' + domains[2]
+
+        # Extract the port number
+        target_port_pos = target_filename.find(":")
+        if target_port_pos != -1:
+            target_port = int(target_filename[target_port_pos+1:])
+        elif url_parse.scheme == 'https':
+            target_port = 443
+        else:
+            target_port = 80
+        
+        # Add path to filename but remove any trailing backslash.
+        target_filename += url_parse.path.rstrip("/")
+        
+        cls.target_scheme = url_parse.scheme
+        cls.target_host = target_host
+        cls.target_filename = target_filename
+        cls.target_port = target_port
+
+    def check_cache(cls):
+        file_exist = False
+        try:
+            # Check wether the file exist in the cache
+            f = open(cls.target_filename, "r")
+            outputdata = f.readlines()
+            file_exist = True
+            for line in outputdata:
+                print(line)
+            # ProxyServer finds a cache hit and generates a response message
+            cls.emit("HTTP/1.0 200 OK\r\n")
+            cls.emit("Content-Type:text/html\r\n")
+            # Fill in start.
+            # Fill in end.
+            print('Read from cache')
+        
+        # Error handling for file not found in cache
+        except IOError:
+            if file_exist == False:
+                # Create a socket on the proxyserver
+
+                # Remove any sub-domains
+                print(cls.target_host)
+                print(cls.target_scheme)
+
+                cls.__connect_to_target()
+                
+                # try:
+                    # Connect to the socket to port 80
+                    # # Fill in start.
+                    # # Fill in end.
+                    
+                    # # Create a temporary file on this socket and ask port 80 for the file requested by the client
+                    # fileobj = c.makefile('r', 0)
+                    # fileobj.write("GET  " + "http://" + filename + "HTTP/1.0\n\n")
+                    # # Read the response into buffer
+                    # # Fill in start.
+                    # # Fill in end.
+
+                    # # Create a new file in the cache for the requested file.
+                    # # Also send the response in the buffer to client socketand the corresponding file in the cache
+                    # tmpFile = open("./" + filename,"wb")
+                    # # Fill in start.
+                    # # Fill in end.
+                # except:
+                #     print("Illegal request")
+
+            else:
+                # HTTP response message for file not found
+                # Fill in start.
+                # Fill in end.
+                pass
+            
 
     def close_client(cls):
-        cls.cli_socket_file.close()
+        cls.client_socket_file.close()
         cls.client_socket.close()
 
     def close(cls):
@@ -152,7 +255,9 @@ while True:
     proxy.wait_for_connection()
     proxy.emit("Ready to serve...")
     proxy.wait_for_socket_file()
-    proxy.get_socket_file_data_dict()
+    proxy.create_socket_file_data_dict()
+    proxy.extract_filename()
+    proxy.check_cache()
     proxy.close_client()
-
+    
 proxy.close()
