@@ -98,17 +98,6 @@ class TCPSocket:
         logger.info(f"{cls.name} listening on {PROXY_IP}:{PROXY_PORT}")
         return cls.socket
 
-    def connect(cls, ip, port):
-        cls.client_socket = socket(AF_INET, SOCK_STREAM)
-        cls.client_socket.connect((ip, port))
-
-    def make_socket_file(cls):
-        cls.socket_file = cls.socket.makefile('rwb')
-
-    def write(cls, msg):
-        cls.socket_file.write(msg.encode('utf-8'))
-        cls.socket_file.flush()
-
     def __accept(cls):
         return cls.socket.accept()
 
@@ -139,9 +128,6 @@ class TCPSocket:
     def close_client(cls):
         cls.cli_socket_file.close()
         cls.client_socket.close()
-
-    # def close_client_socket_file(cls):
-    #     cls.client_socket_file.close()
 
     def close(cls):
         logger.info(f"{cls.name} closed.")
