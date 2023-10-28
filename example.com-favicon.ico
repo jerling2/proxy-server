@@ -1,14 +1,13 @@
-HTTP/1.1 200 OK
-Age: 267345
+HTTP/1.0 404 Not Found
+Age: 75294
 Cache-Control: max-age=604800
 Content-Type: text/html; charset=UTF-8
-Date: Sat, 28 Oct 2023 03:47:09 GMT
-Etag: "3147526947+ident"
-Expires: Sat, 04 Nov 2023 03:47:09 GMT
-Last-Modified: Thu, 17 Oct 2019 07:18:26 GMT
-Server: ECS (sed/58BA)
+Date: Sat, 28 Oct 2023 17:18:07 GMT
+Expires: Sat, 04 Nov 2023 17:18:07 GMT
+Last-Modified: Fri, 27 Oct 2023 20:23:13 GMT
+Server: ECS (sed/58AA)
 Vary: Accept-Encoding
-X-Cache: HIT
+X-Cache: 404-HIT
 Content-Length: 1256
 Connection: close
 

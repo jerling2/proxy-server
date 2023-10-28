@@ -1,13 +1,13 @@
-HTTP/1.1 200 OK
+HTTP/1.0 200 OK
 Accept-Ranges: bytes
-Age: 83644
+Age: 103893
 Cache-Control: max-age=604800
 Content-Type: text/html; charset=UTF-8
-Date: Sat, 28 Oct 2023 03:41:27 GMT
-Etag: "3147526947+gzip"
-Expires: Sat, 04 Nov 2023 03:41:27 GMT
+Date: Sat, 28 Oct 2023 17:18:07 GMT
+Etag: "3147526947"
+Expires: Sat, 04 Nov 2023 17:18:07 GMT
 Last-Modified: Thu, 17 Oct 2019 07:18:26 GMT
-Server: ECS (sed/58AA)
+Server: ECS (sed/5889)
 Vary: Accept-Encoding
 X-Cache: HIT
 Content-Length: 1256
@@ -59,3 +59,5 @@ Connection: close
 </div>
 </body>
 </html>
+
+
