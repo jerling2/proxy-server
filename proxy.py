@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8000
+PROXY_PORT = 8001
 # Allow maximum of 5 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 5
 BUFFER_SIZE = 1024
@@ -63,51 +63,92 @@ class TCPSocket:
         cls.req = cls.client_socket.recv(BUFFER_SIZE)
 
     def resolve(cls):
+        """ Loads all data within the class"""
         cls.__extract()
         cls.__cache()
-        # Search Cache
-        # Load response into class 
-        pass
 
     def respond(cls):
+        """ Sends contents to the client """
         pass
 
     def __extract(cls):
         data = cls.req.decode('utf-8')
-
         # Split Up HTTP Request
         headers, body = data.split('\r\n\r\n', 1)
         request_line, *header_lines = headers.split('\r\n')
         method, path, version = request_line.split()
-
-        # Store Key-Values in Dictionary
+        url_parsed = urlparse(path.lstrip('/'))
+        # Store data in a dictionary
         cls.req_dict = dict()
         cls.req_dict['method'] = method
-        cls.req_dict['path'] = path
+        cls.req_dict['path'] = url_parsed.path # note I am using URL parsed path!
         cls.req_dict['version'] = version
+        cls.req_dict['scheme'] = url_parsed.scheme
         cls.req_dict['body'] = body
         for header in header_lines:
             key, value = header.split(':', 1)
             cls.req_dict[key.strip()] = value.strip()
-
-        url_parsed = urlparse(path.lstrip('/'))
         cls.req_dict['domain'] =  url_parsed.netloc
+
+        cache_path = url_parsed.netloc + url_parsed.path
+        cache_path = cache_path.rstrip('/')
+        cache_path = cache_path.replace('/', '-')
+        cls.req_dict['cache_path'] = cache_path
+
         domains = url_parsed.netloc.split('.')
         if len(domains) > 2:
             cls.req_dict['hostn'] = domains[1] + '.' + domains[2]
         else:
             cls.req_dict['hostn'] = domains[0] + '.' + domains[1]
-        
+
     def __cache(cls):
-        # Temporary HTTP Socket Connection
+        try:
+            # Cache hit
+            cls.req_file = cls.__read_cache()
+            return
+        except IOError:
+            # Cache miss
+            # Temporary connect to web server socket
+            c = cls.__http_connect()
+            cls.__http_get_request(c)
+            req_file = c.makefile('rb', 0)
+            # Close the socket when we're done.
+            c.close()
+            # Write the response to the cache.
+            cls.__write_cache(req_file)
+            cls.req_file = req_file
+
+    def __http_connect(cls) -> 'socket':
+        """Conencts two sockets together. Strictly HTTP."""
         c = socket(AF_INET, SOCK_STREAM)
         c.connect((cls.req_dict['hostn'], 80))
-        socket_file = c.makefile('rwb', 0)
-        try:
-            f = open(cls.req_dict['domain'], 'rb')
-            socket_file.write("GET  " + "http://" + cls.req_dict['domain'] + "HTTP/1.0\n\n")
-        except IOError:
-            pass
+        return c
+    
+    def __http_get_request(cls, connection):
+        request =  f"GET {cls.req_dict['path']} {cls.req_dict['version']}\r\n"
+        request += f"Host: {cls.req_dict['domain']}\r\n"
+        request += "Connection: close\r\n\r\n" # Specifiy non-persistant connection.
+        connection.send(request.encode('utf-8'))
+    
+    def __read_cache(cls):
+        cache_data = b''
+        f = open(cls.req_dict['cache_path'], 'rb')
+        lines = f.readlines()
+        for line in lines:
+            cache_data += line
+        f.close()
+        return cache_data
+
+    def __write_cache(cls, message):
+        f = open(cls.req_dict['domain'], 'wb')
+        while True:
+            data = message.read(BUFFER_SIZE)
+            if not data:
+                break
+            f.write(data)
+        f.write(b'\r\n\r\n') # Fail safe to make sure the message has an end.
+        f.close()
+
     def send_html(cls):
         cls.client_socket.send(b'HTTP/1.1 200 OK\n')
         cls.client_socket.send(b'Content-Type: text/html\n\n')
