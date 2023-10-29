@@ -49,7 +49,7 @@ class TCPSocket:
             cls.client_address = None
             cls.req = None
             cls.req_dict = None
-            cls.last_host
+            cls.last_host = None
             cls.payload = None
             cls.res_file = None
         return cls.instance
@@ -227,7 +227,6 @@ class TCPSocket:
         # (Optional) Payload/Body/Content Start
         if cls.payload is not None:
             request += cls.payload
-            print(f'received payload {cls.payload}')
             request += b'\r\n\r\n'
         # -- Payload/Body/Content End
         connection.send(request)
