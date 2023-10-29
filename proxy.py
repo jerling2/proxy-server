@@ -15,7 +15,7 @@ import sys  # Access for argv and argc.
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8001
+PROXY_PORT = 8000
 # Allow maximum of 0 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 0
 BUFFER_SIZE = 1024
@@ -61,10 +61,16 @@ class TCPSocket:
         cls.req = cls.client_socket.recv(BUFFER_SIZE)
         print(f"Received request:\n{cls.req}\n\n")
 
+    def validate(cls):
+        if cls.req == b'':
+            print('broken pipeline... dropping client')
+            return False
+        return True
+
     def resolve(cls):
         """ Loads all data within the class"""
         cls.__extract()
-        cls.__cache()
+        cls.__check_cache()
 
     def respond(cls):
         """ Sends contents to the client """
@@ -82,8 +88,8 @@ class TCPSocket:
     def __extract(cls):
         # data = cls.req.decode('utf-8')
         # Split Up HTTP Request
-        headers, payload = cls.req.split(b'\r\n\r\n', 1)
-
+        headers, cls.payload = cls.req.split(b'\r\n\r\n', 1)
+    
         # Headers should human-readiable
         headers = headers.decode('utf-8')
 
@@ -95,48 +101,46 @@ class TCPSocket:
             key, value = header.split(':', 1)
             cls.req_dict[key.strip()] = value.strip()
         cls.req_dict['method'] = method
+       
         host = cls.req_dict.get('Host')
         if host:
             cls.last_host = host
-            rel_path_index = path.find(host) + len(host)
-            rel_path = path[rel_path_index:]
-            cls.req_dict['path'] = rel_path
-            cache_path = host + rel_path
-            cache_path = cache_path.replace('/', '-').rstrip('-')
-            cls.req_dict['cache_path'] = cache_path
+        else:
+            cls.host = cls.last_host   
 
-    def check_connectivity(cls):
-        status = cls.req_dict.get('Connection')
-        return status
+        rel_path_index = path.find(host) + len(host)
+        rel_path = path[rel_path_index:]
+        cls.req_dict['path'] = rel_path
+        cache_path = host + rel_path
+        cache_path = cache_path.replace('/', '-').rstrip('-')
+        cls.req_dict['cache_path'] = cache_path
 
-    def __cache(cls):
-        try:
-            # Cache hit
-            cls.res_file = cls.__read_cache()
+    def __check_cache(cls):
+        if cls.req_dict['method'] == 'POST':
+            cls.__cache_miss()
             return
-        except IOError:
-            # Cache miss
-            # Temporary connect to web server socket
-            c = cls.__http_connect()
-            cls.__http_request(c)
-            res_file = c.makefile('rb', 0)
-            # Close the socket when we're done.
-            c.close()
-            # Write the response to the cache.
-            cls.__write_cache(res_file)
+        try: 
             cls.res_file = cls.__read_cache()
+        except IOError:
+            cls.__cache_miss()
+
+    def __cache_miss(cls):
+        # Cache miss
+        # Temporary connect to web server socket
+        c = cls.__http_connect()
+        cls.__http_request(c)
+        res_file = c.makefile('rb', 0)
+        # Close the socket when we're done.
+        c.close()
+        # Write the response to the cache.
+        cls.__write_cache(res_file)
+        cls.res_file = cls.__read_cache()
 
     def __http_connect(cls) -> 'socket':
         """Conencts two sockets together. Strictly HTTP."""
         c = socket(AF_INET, SOCK_STREAM)
         c.connect((cls.req_dict['Host'], 80))
         return c
-    
-    def __http_get_request(cls, connection):
-        request =  f"GET {cls.req_dict['path']} HTTP/1.0\r\n"
-        request += f"Host: {cls.req_dict['Host']}\r\n"
-        request += "Connection: close\r\n\r\n" # Specifiy non-persistant connection.
-        connection.send(request.encode('utf-8'))
     
     def __http_request(cls, connection):
         request =  f"{cls.req_dict['method']} {cls.req_dict['path']} HTTP/1.0\r\n"
@@ -145,13 +149,15 @@ class TCPSocket:
         for header, value in cls.req_dict.items():
             if header not in {'method', 'path', 'cache_path', 'Host', 'Connection'}:
                 request += f"{header}: {value}\r\n"
+       
         request += '\r\n' # End Headers
-
-        print(f'sending web server this request (-payload):\n{request}')
         request = request.encode('utf-8')
         
+        print(f'TEST\n\npayload = {cls.payload}\n\n')
+
         if cls.payload is not None:
             request += cls.payload
+            print(f'received payload {cls.payload}')
             request += b'\r\n\r\n' # End message
         
         connection.send(request)
@@ -189,11 +195,9 @@ def main():
     while True:
         proxy.on_connect()
         proxy.on_request()
-        if proxy.req == b'':
-            print('broken pipeline')
-            break
-        proxy.resolve()
-        proxy.respond()
+        if proxy.validate():
+            proxy.resolve()
+            proxy.respond()
         proxy.close_client()
         proxy.reset()
     proxy.close()

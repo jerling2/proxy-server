@@ -1,0 +1,31 @@
+HTTP/1.1 200 OK
+Date: Sun, 29 Oct 2023 02:13:23 GMT
+Content-Type: application/json
+Content-Length: 460
+Connection: close
+Server: gunicorn/19.9.0
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+
+{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {
+    "{}": ""
+  }, 
+  "headers": {
+    "Accept": "*/*", 
+    "Content-Length": "2", 
+    "Content-Type": "application/x-www-form-urlencoded", 
+    "Host": "httpbin.org", 
+    "Proxy-Connection": "Keep-Alive", 
+    "User-Agent": "curl/7.88.1", 
+    "X-Amzn-Trace-Id": "Root=1-653dbfc3-49af4ff8141d37d546f27f7c"
+  }, 
+  "json": null, 
+  "origin": "128.223.223.31", 
+  "url": "http://httpbin.org/post"
+}
+
+
