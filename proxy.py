@@ -9,29 +9,19 @@
 
 from socket import *  # Access to TCP sockets 
 import sys  # Access for argv and argc.
-from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------- #
 # ------------------------------ Global Variable ----------------------------- #
 
 # Hosting proxy server on local host on port 6060
 PROXY_IP = '127.0.0.1'
-PROXY_PORT = 8000
+PROXY_PORT = 8001
 # Allow maximum of 0 connections to wait in queue.
 PROXY_CONNECTION_QUEUE_SIZE = 0
 BUFFER_SIZE = 1024
 
 # ---------------------------------------------------------------------------- #
-# -------------------------------- Exceptions -------------------------------- #
-
-# class UnderflowError(Exception):
-#     pass
-
-# class OutOfBoundsError(Exception):
-#     pass
-
-# ---------------------------------------------------------------------------- #
-# ---------------------------------- Classes --------------------------------- #
+# -------------------------------- TCP SOCKET -------------------------------- #
 
 class TCPSocket:
     # Singleton Pattern
@@ -45,6 +35,7 @@ class TCPSocket:
             cls.req = None
             cls.req_dict = None
             cls.res_file = None
+            cls.payload = None
         return cls.instance
 
     def close(cls):
@@ -68,6 +59,7 @@ class TCPSocket:
 
     def on_request(cls):
         cls.req = cls.client_socket.recv(BUFFER_SIZE)
+        print(f"Received request:\n{cls.req}\n\n")
 
     def resolve(cls):
         """ Loads all data within the class"""
@@ -80,7 +72,7 @@ class TCPSocket:
 
     def reset(cls):
         """ Call after response()"""
-        cls.last_req_dict = cls.req_dict.copy()
+        cls.payload = None
         cls.client_socket = None
         cls.client_address = None
         cls.req = None
@@ -88,47 +80,30 @@ class TCPSocket:
         cls.res_file = None
 
     def __extract(cls):
-        data = cls.req.decode('utf-8')
+        # data = cls.req.decode('utf-8')
         # Split Up HTTP Request
-        headers, body = data.split('\r\n\r\n', 1)
+        headers, payload = cls.req.split(b'\r\n\r\n', 1)
+
+        # Headers should human-readiable
+        headers = headers.decode('utf-8')
+
         request_line, *header_lines = headers.split('\r\n')
         method, path, version = request_line.split()
-        url_parsed = urlparse(path.lstrip('/'))
         # Store data in a dictionary
         cls.req_dict = dict()
-        cls.req_dict['method'] = method
-        cls.req_dict['path'] = url_parsed.path # note I am using URL parsed path!
-        cls.req_dict['version'] = version
-        cls.req_dict['scheme'] = url_parsed.scheme
-        cls.req_dict['body'] = body
         for header in header_lines:
             key, value = header.split(':', 1)
             cls.req_dict[key.strip()] = value.strip()
-        cls.req_dict['domain'] =  url_parsed.netloc
-
-        cache_path = url_parsed.netloc + url_parsed.path
-        cache_path = cache_path.rstrip('/')
-        cache_path = cache_path.replace('/', '-')
-        cls.req_dict['cache_path'] = cache_path
-
-        print(f'URL PARSED = {url_parsed}')
-
-        if cls.req_dict['domain'] == '':
-            print(url_parsed.netloc)
-            print(cls.req)
-            print(cls.req_dict)
-            cls.req_dict['domain'] = cls.last_req_dict['domain']
-            cls.req_dict['cache_path'] = cls.last_req_dict['cache_path'] + '-' + cls.req_dict['path']
-            cls.req_dict['path'] = '/' + cls.req_dict['path']
-            cls.req_dict['hostn'] = cls.last_req_dict['hostn']
-
-        domains = url_parsed.netloc.split('.')
-        if len(domains) > 2:
-            cls.req_dict['hostn'] = domains[1] + '.' + domains[2]
-        else:
-            cls.req_dict['hostn'] = domains[0] + '.' + domains[1]
-
-
+        cls.req_dict['method'] = method
+        host = cls.req_dict.get('Host')
+        if host:
+            cls.last_host = host
+            rel_path_index = path.find(host) + len(host)
+            rel_path = path[rel_path_index:]
+            cls.req_dict['path'] = rel_path
+            cache_path = host + rel_path
+            cache_path = cache_path.replace('/', '-').rstrip('-')
+            cls.req_dict['cache_path'] = cache_path
 
     def check_connectivity(cls):
         status = cls.req_dict.get('Connection')
@@ -143,7 +118,7 @@ class TCPSocket:
             # Cache miss
             # Temporary connect to web server socket
             c = cls.__http_connect()
-            cls.__http_get_request(c)
+            cls.__http_request(c)
             res_file = c.makefile('rb', 0)
             # Close the socket when we're done.
             c.close()
@@ -154,15 +129,33 @@ class TCPSocket:
     def __http_connect(cls) -> 'socket':
         """Conencts two sockets together. Strictly HTTP."""
         c = socket(AF_INET, SOCK_STREAM)
-        c.connect((cls.req_dict['hostn'], 80))
+        c.connect((cls.req_dict['Host'], 80))
         return c
     
     def __http_get_request(cls, connection):
         request =  f"GET {cls.req_dict['path']} HTTP/1.0\r\n"
-        request += f"Host: {cls.req_dict['domain']}\r\n"
+        request += f"Host: {cls.req_dict['Host']}\r\n"
         request += "Connection: close\r\n\r\n" # Specifiy non-persistant connection.
         connection.send(request.encode('utf-8'))
     
+    def __http_request(cls, connection):
+        request =  f"{cls.req_dict['method']} {cls.req_dict['path']} HTTP/1.0\r\n"
+        request += f"Host: {cls.req_dict['Host']}\r\n"
+        request += "Connection: close\r\n" # Specifiy non-persistant connection.
+        for header, value in cls.req_dict.items():
+            if header not in {'method', 'path', 'cache_path', 'Host', 'Connection'}:
+                request += f"{header}: {value}\r\n"
+        request += '\r\n' # End Headers
+
+        print(f'sending web server this request (-payload):\n{request}')
+        request = request.encode('utf-8')
+        
+        if cls.payload is not None:
+            request += cls.payload
+            request += b'\r\n\r\n' # End message
+        
+        connection.send(request)
+
     def __read_cache(cls):
         cache_data = b''
         f = open(cls.req_dict['cache_path'], 'rb')
@@ -176,8 +169,6 @@ class TCPSocket:
         f = open(cls.req_dict['cache_path'], 'wb')
         while True:
             line = message.readline()
-            # if line == b'Connection: close\r\n':
-            #     continue
             if not line:
                 break
             f.write(line)
@@ -186,22 +177,26 @@ class TCPSocket:
 
 # ---------------------------------------------------------------------------- #
 # -------------------------------- Main Driver ------------------------------- #
-if len(sys.argv) <= 1:
-    print('Usage : "python ProxyServer.py server_ip"\n[server_ip : It is the IP Address Of Proxy Server')
-    sys.exit(2)
+def main():
+    if len(sys.argv) <= 1:
+        print('Usage : "python ProxyServer.py server_ip"\n[server_ip : It is the IP Address Of Proxy Server')
+        sys.exit(2)
 
-PROXY_IP = sys.argv[1]
+    PROXY_IP = sys.argv[1]
 
-proxy = TCPSocket()
-proxy.open()
-while True:
-    proxy.on_connect()
-    proxy.on_request()
-    if proxy.req == b'':
-        print('broken pipeline')
-        break
-    proxy.resolve()
-    proxy.respond()
-    proxy.close_client()
-    proxy.reset()
-proxy.close()
+    proxy = TCPSocket()
+    proxy.open()
+    while True:
+        proxy.on_connect()
+        proxy.on_request()
+        if proxy.req == b'':
+            print('broken pipeline')
+            break
+        proxy.resolve()
+        proxy.respond()
+        proxy.close_client()
+        proxy.reset()
+    proxy.close()
+
+if __name__ == "__main__":
+    main()
